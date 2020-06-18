@@ -1,4 +1,11 @@
+'''
+    Given the raw data (consisted of GPS data) and a COVID-19 patient file 
+    containing information about addresses and important dates for infected
+    people, we identify mobile IDs corresponding to those infected patients.
+'''
+
 import os
+import csv
 import pytz
 import pickle
 import geohash
@@ -37,11 +44,6 @@ def generate_cross_table(infected_places_dict, valid_days, hours_per_day=7):
     return pd.DataFrame.from_dict(table)
     
 
-'''
-    Here we need to handle GPS files, cross them with infected household
-    address, obtain the trajectories for specific IDs, etc.
-'''
-
 class GPS_MATCHING:
     def __init__(self, path_to_folder, path_to_trajectories, prefix=''):
         '''
@@ -58,8 +60,55 @@ class GPS_MATCHING:
         self.prefix = prefix
         self.data_folder = path_to_folder
         self.pickle_folder = path_to_trajectories
+    
+    def create_trajectories_file(self, filenames, name_rel=None):
+        '''
+            'filenames': list of strings corresponding to the names of the
+            raw data files.
+            
+            'name_rel': initialized dictionary where its keys hold the names
+            of the columns of the raw data. The values at the beginning are just
+            dummy numbers and they will be defined during the running.
+        '''
+        if name_rel==None:
+            name_rel = {'datastamp':-1, 'id': -1, 'lat':-1, 'long':-1}
+            
+        # dict for all users for the current file.
+        user_dict = defaultdict(list)
+        lat_user = defaultdict(list)
+        lon_user = defaultdict(list)
+        time_user = defaultdict(list)
         
-    def create_trajectories_file(self, init_date, final_date, year=2020):
+        for fname in tqdm(filenames):
+            with open(os.path.join(self.data_folder, fname), 'r') as csv_file:
+                csv_reader = csv.reader(csv_file, delimiter=',')
+                line_count = 0
+                for row in csv_reader:
+                    if line_count==0:
+                        #columns = ",".join(row)
+                        for index, col_name in enumerate(row):
+                            name_rel[col_name] = index
+                        line_count+=1
+                    else:
+                        user_id = row[name_rel['id']]
+                        lat_user[user_id].append(row[name_rel['lat']])
+                        lon_user[user_id].append(row[name_rel['long']])
+                        time_user[user_id].append(row[name_rel['datastamp']])
+                        line_count+=1
+                
+                # sort the datapoints of each user according the timestamp.
+                for uid in time_user.keys():
+                    timesorted_lat = [x for _,x in sorted(zip(time_user[uid], lat_user[uid]))]
+                    timesorted_lon = [x for _,x in sorted(zip(time_user[uid], lon_user[uid]))]
+                    timesorted = sorted(time_user[uid])
+                    user_dict[uid] = [timesorted_lat, timesorted_lon, timesorted]
+
+            # Then, save the day dict in a serielized pickle object.
+            basename = fname.split('.')[0]
+            with open(os.path.join(self.pickle_folder, f'{basename}.pickle'), 'wb') as f:
+                pickle.dump(user_dict, f)
+    
+    def create_trajectories_file1(self, init_date, final_date, year=2020):
         '''
             'init_date' and 'final_date' are lists of length two.
             Their format must be ['MM', 'DD'] referring to the string
