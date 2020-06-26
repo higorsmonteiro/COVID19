@@ -72,14 +72,14 @@ class GPS_MATCHING:
         '''
         if name_rel==None:
             name_rel = {'datastamp':-1, 'id': -1, 'lat':-1, 'long':-1}
-            
-        # dict for all users for the current file.
-        user_dict = defaultdict(list)
-        lat_user = defaultdict(list)
-        lon_user = defaultdict(list)
-        time_user = defaultdict(list)
         
         for fname in tqdm(filenames):
+            # dict for all users for the current file.
+            user_dict = defaultdict(list)
+            lat_user = defaultdict(list)
+            lon_user = defaultdict(list)
+            time_user = defaultdict(list)
+            
             with open(os.path.join(self.data_folder, fname), 'r') as csv_file:
                 csv_reader = csv.reader(csv_file, delimiter=',')
                 line_count = 0
@@ -91,12 +91,12 @@ class GPS_MATCHING:
                         line_count+=1
                     else:
                         user_id = row[name_rel['id']]
-                        lat_user[user_id].append(row[name_rel['lat']])
-                        lon_user[user_id].append(row[name_rel['long']])
-                        time_user[user_id].append(row[name_rel['datastamp']])
+                        lat_user[user_id].append(float(row[name_rel['lat']]))
+                        lon_user[user_id].append(float(row[name_rel['long']]))
+                        time_user[user_id].append(int(float(row[name_rel['datastamp']])))
                         line_count+=1
                 
-                # sort the datapoints of each user according the timestamp.
+                # sort the datapoints of each user accorrding the timestamp.
                 for uid in time_user.keys():
                     timesorted_lat = [x for _,x in sorted(zip(time_user[uid], lat_user[uid]))]
                     timesorted_lon = [x for _,x in sorted(zip(time_user[uid], lon_user[uid]))]
@@ -107,63 +107,6 @@ class GPS_MATCHING:
             basename = fname.split('.')[0]
             with open(os.path.join(self.pickle_folder, f'{basename}.pickle'), 'wb') as f:
                 pickle.dump(user_dict, f)
-    
-    def create_trajectories_file1(self, init_date, final_date, year=2020):
-        '''
-            'init_date' and 'final_date' are lists of length two.
-            Their format must be ['MM', 'DD'] referring to the string
-            indexes of the month and the day of the initial and final
-            gps files.  
-            
-            From the 'init_date' to the 'final_date' the CSV files are
-            converted to pickle files that will hold the users sorted
-            timeline datapoints.
-            
-            obs: pay attention at the format of the CSV files. Here, we
-            consider 5 columns: index, UID, timestamp, lat and lon.
-        '''
-        
-        first_day = dt.date(year, int(init_date[0]), int(init_date[1]))
-        last_day = dt.date(year, int(final_date[0]), int(final_date[1]))
-        # List of date from first day to the last day.
-        date_list = utils.set_datelist(first_day, last_day)
-        
-        for current_date in tqdm(date_list):
-            day = current_date.day
-            month = current_date.month
-            day_str = str(day).zfill(2)
-            month_str = str(month).zfill(2)
-            # dict for all users for the current date.
-            user_dict = defaultdict(list)
-            lat_user = defaultdict(list)
-            lon_user = defaultdict(list)
-            time_user = defaultdict(list)
-            n = 0
-            with open(os.path.join(self.data_folder, f'{self.prefix}_{month_str}_{day_str}.csv'), 'r') as f:
-                # get data for each user.
-                for line in f:
-                    if n==0: # the header of the file.
-                        n+=1
-                        continue
-                    info = line.split(',')
-                    time_user[info[1]].append(int(info[2]))
-                    lat_user[info[1]].append(float(info[3]))
-                    lon_user[info[1]].append(float(info[4][:-1]))
-                    
-                # sort the datapoints of each user according the timestamp.
-                for uid in time_user.keys():
-                    lat = lat_user[uid]
-                    lon = lon_user[uid]
-                    timing = time_user[uid]
-                
-                    timesorted_lat = [x for _,x in sorted(zip(timing, lat))]
-                    timesorted_lon = [x for _,x in sorted(zip(timing, lon))]
-                    timesorted = sorted(timing)
-                    user_dict[uid] = [timesorted_lat, timesorted_lon, timesorted]
-                    
-                # Then, save the day dict in a serielized pickle object.
-                with open(os.path.join(self.pickle_folder, f'{self.prefix}_users_{month_str}_{day_str}.pickle'), 'wb') as f:
-                    pickle.dump(user_dict, f)
                     
     def patient_matching(self, order_index, lat_inf, lon_inf, inf_places,
                          R=30.0, init_interval=22, final_interval=5, num_files=-1, 
@@ -172,6 +115,12 @@ class GPS_MATCHING:
             Given the latitude and longitude of the household addresses of the
             infected people, match the users' IDs from the database with these
             places.
+            
+            'order_index': array of indexes for each patient.
+            'lat_inf': array of latitude values for each patient.
+            'lon_inf': array of longitude values for each patient.
+            'inf_places': DataFrame containing the columns 'LAT' and 'LON' for each
+            patient' house address. It must be indexed by 'order_index' values.
         '''
         info_files = sorted(os.listdir(self.pickle_folder))
         if num_files>0:
